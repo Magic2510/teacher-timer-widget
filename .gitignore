@@ -1,0 +1,11 @@
+# 依赖（体积巨大，不入库；缺失时 bat 会自动 npm install）
+node_modules/
+
+# 系统 / 编辑器杂项
+.DS_Store
+Thumbs.db
+*.log
+
+# Electron 本地用户数据（不在项目目录，双保险）
+dist/
+out/

@@ -1,0 +1,14 @@
+{
+  "name": "teacher-timer-widget",
+  "version": "1.0.0",
+  "description": "教师课表倒计时桌面浮窗（无边框透明置顶，离线运行）",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^44.5.1"
+  }
+}

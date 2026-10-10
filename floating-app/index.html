@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;">
+<title>教师课表倒计时</title>
+<style>
+/* ============================================================
+ * 页面样式（全内联，不引用外部字体 / CDN，完全离线）
+ * ============================================================ */
+:root{
+  --text:#ffffff;          /* 正文文字 */
+  --text-sub:rgba(255,255,255,.72); /* 次要文字 */
+  --card-bg:rgba(255,255,255,.10);  /* 卡片半透明玻璃底 */
+  --card-line:rgba(255,255,255,.16);/* 卡片描边 */
+  --amber:#ffb74d;         /* 琥珀色强调 */
+  --amber-2:#ff9800;
+  --danger:#ff6b6b;
+  --done:rgba(255,255,255,.45);
+}
+/* 浅色主题：自动切换为深色文字，保证清晰可读 */
+body.light{
+  --text:#23304a;
+  --text-sub:rgba(30,45,75,.66);
+  --card-bg:rgba(255,255,255,.55);
+  --card-line:rgba(20,40,80,.12);
+  --amber:#c77700;
+  --amber-2:#a85e00;
+  --danger:#c0392b;
+  --done:rgba(40,60,90,.45);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:transparent;overflow:hidden}
+body{
+  font-family:"Microsoft YaHei","PingFang SC","Segoe UI",sans-serif;
+  color:var(--text);
+  user-select:none;          /* 浮窗整体不可选中文字，更像小组件 */
+  -webkit-font-smoothing:antialiased;
+}
+/* 圆角渐变面板：唯一可见的浮窗主体 */
+.panel{
+  position:relative;width:100vw;height:100vh;
+  padding:10px 12px 14px;
+  overflow-y:auto;overflow-x:hidden;
+  background:var(--bg, linear-gradient(160deg,#2b1055 0%,#3a1c71 55%,#7597de 100%));
+  background-size:cover;background-position:center;
+  border-radius:16px;border:1px solid rgba(255,255,255,.14);
+}
+.panel::-webkit-scrollbar{width:5px}
+.panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.25);border-radius:3px}
+
+/* ---------- 通用卡片（毛玻璃半透明） ---------- */
+.card{
+  background:var(--card-bg);
+  border:1px solid var(--card-line);
+  border-radius:14px;
+  padding:9px 12px 10px;
+  margin-bottom:9px;
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+}
+.card-title{
+  font-size:12px;letter-spacing:2px;
+  color:var(--text-sub);
+  margin-bottom:6px;
+  border-left:3px solid var(--amber);padding-left:7px;
+}
+
+/* ---------- 顶部标题栏（拖动区） ---------- */
+.titlebar{
+  -webkit-app-region:drag;     /* 整块可拖动浮窗 */
+  padding:2px 2px 8px;
+}
+.titlebar button,.theme-dot,.scheme-bar button{
+  -webkit-app-region:no-drag;  /* 按钮区域不触发拖动 */
+}
+.tb-top{display:flex;align-items:flex-start;justify-content:space-between}
+.clock{
+  font-size:40px;font-weight:700;line-height:1.05;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:1px;
+  text-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+.clock small{font-size:18px;font-weight:600;opacity:.85}
+.date{font-size:13px;color:var(--text-sub);margin-top:2px;letter-spacing:1px}
+.tb-btns{display:flex;gap:6px}
+.tb-btn{
+  border:none;border-radius:8px;padding:4px 10px;cursor:pointer;
+  font-size:12px;color:#fff;background:rgba(255,255,255,.16);
+  border:1px solid rgba(255,255,255,.22);
+}
+.tb-btn:hover{background:rgba(255,255,255,.30)}
+.tb-btn.on{background:var(--amber);color:#33200a;border-color:var(--amber-2);font-weight:600}
+.tb-btn.danger{background:rgba(255,107,107,.28);border-color:rgba(255,107,107,.45)}
+.tb-btn.danger:hover{background:var(--danger);color:#fff}
+
+.scheme-bar{display:flex;align-items:center;gap:8px;margin-top:6px}
+.scheme-name{
+  font-size:13px;color:var(--text);
+  background:rgba(255,255,255,.14);border:1px solid var(--card-line);
+  padding:2px 10px;border-radius:999px;letter-spacing:1px;
+}
+body.light .scheme-name{background:rgba(20,40,80,.10)}
+.mini-btn{
+  border:1px solid var(--card-line);background:rgba(255,255,255,.14);
+  color:var(--text);border-radius:999px;padding:2px 10px;font-size:12px;cursor:pointer;
+}
+.mini-btn:hover{background:var(--amber);color:#33200a;border-color:var(--amber-2)}
+body.light .mini-btn{background:rgba(20,40,80,.10)}
+
+/* 主题色块：一键切换底色 */
+.theme-bar{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.theme-dot{
+  width:20px;height:20px;border-radius:50%;cursor:pointer;
+  border:2px solid rgba(255,255,255,.35);
+  transition:transform .15s;
+}
+.theme-dot:hover{transform:scale(1.2)}
+.theme-dot.on{border-color:var(--amber);outline:2px solid rgba(255,255,255,.25)}
+body.light .theme-dot.on{outline-color:rgba(0,0,0,.25)}
+.bg-toggle-btn{
+  font-size:11px;color:var(--text-sub);background:none;
+  border:1px dashed var(--card-line);border-radius:999px;
+  padding:2px 9px;cursor:pointer;
+}
+.bg-toggle-btn:hover{color:var(--amber)}
+
+/* ---------- 当前状态卡 ---------- */
+.status-card .row1{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.status-tag{
+  font-size:15px;font-weight:700;letter-spacing:2px;
+  padding:3px 12px;border-radius:999px;
+  background:rgba(255,255,255,.14);border:1px solid var(--card-line);
+  white-space:nowrap;
+}
+.status-tag.hot{background:var(--amber);color:#33200a;border-color:var(--amber-2)}
+.status-tag.meet{background:rgba(255,183,77,.28);color:var(--amber);border-color:rgba(255,183,77,.55)}
+body.light .status-tag.meet{color:var(--amber)}
+.countdown.big{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--amber)}
+.status-sub{font-size:12.5px;color:var(--text-sub);margin-top:6px;line-height:1.5}
+
+/* ---------- 下一节课卡 ---------- */
+.next-main{font-size:17px;font-weight:700;color:var(--amber);letter-spacing:.5px}
+.next-main b{color:var(--text);font-weight:700}
+.next-time{font-size:13px;color:var(--text-sub);margin-top:3px;font-variant-numeric:tabular-nums}
+.next-count{font-size:13px;color:var(--text);margin-top:5px;font-variant-numeric:tabular-nums}
+.next-count i{color:var(--amber);font-style:normal;font-weight:700}
+
+/* ---------- 打卡提醒（2x2 网格） ---------- */
+.punch-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.punch-item{
+  border:1px solid var(--card-line);border-radius:10px;
+  padding:6px 8px;background:rgba(255,255,255,.05);
+}
+body.light .punch-item{background:rgba(20,40,80,.05)}
+.punch-item.on{
+  background:var(--amber);border-color:var(--amber-2);
+  box-shadow:0 0 0 2px rgba(255,183,77,.35);
+}
+.punch-item.on .p-name,.punch-item.on .p-time,.punch-item.on .p-note{color:#33200a}
+.p-name{font-size:12px;color:var(--text-sub)}
+.p-time{font-size:14.5px;font-weight:700;margin-top:1px;font-variant-numeric:tabular-nums}
+.p-note{font-size:10.5px;color:var(--text-sub);margin-top:2px}
+
+/* ---------- 下班进度卡 ---------- */
+.off-row{display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px}
+.off-pct{font-size:20px;font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums}
+.bar{
+  height:9px;border-radius:999px;background:rgba(255,255,255,.16);
+  margin:7px 0 6px;overflow:hidden;
+}
+body.light .bar{background:rgba(20,40,80,.12)}
+.bar-fill{
+  height:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--amber-2),var(--amber));
+  transition:width .4s linear;width:0;
+}
+.off-left{font-size:12px;color:var(--text-sub);font-variant-numeric:tabular-nums}
+.off-left b{color:var(--amber);font-weight:700}
+
+/* ---------- 今日课程滚动列表 ---------- */
+.today-scroll{max-height:210px;overflow-y:auto;overflow-x:hidden}
+.today-scroll::-webkit-scrollbar{width:5px}
+.today-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.25);border-radius:3px}
+.t-item{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 8px;border-radius:8px;margin-bottom:3px;
+  font-size:12.5px;border:1px solid transparent;
+}
+.t-item .t-no{
+  flex:0 0 62px;font-size:11px;color:var(--text-sub);
+  font-variant-numeric:tabular-nums;
+}
+.t-item .t-sub{
+  flex:1 1 auto;display:flex;align-items:center;gap:6px;min-width:0;
+}
+.t-item .t-sub .dot{width:8px;height:8px;border-radius:3px;flex:0 0 8px}
+.t-item .t-sub .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.t-item .t-time{flex:0 0 auto;font-size:11px;color:var(--text-sub);font-variant-numeric:tabular-nums}
+.t-item.past{opacity:.38}
+.t-item.now{
+  border-color:var(--amber);background:rgba(255,183,77,.18);
+}
+body.light .t-item.now{background:rgba(199,119,0,.16)}
+.t-item.now .t-no{color:var(--amber);font-weight:700}
+.t-item.now .t-time{color:var(--amber);font-weight:600}
+
+/* ---------- 本周课表概览 ---------- */
+.week-scroll{max-height:232px;overflow:auto;border-radius:8px}
+.week-scroll::-webkit-scrollbar{width:5px;height:5px}
+.week-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.25);border-radius:3px}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:10.5px;min-width:376px}
+th,td{
+  border:1px solid rgba(255,255,255,.10);
+  padding:3px 1px;text-align:center;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:66px;
+}
+body.light th,body.light td{border-color:rgba(20,40,80,.12)}
+th{background:rgba(255,255,255,.08);color:var(--text-sub);font-weight:600;position:sticky;top:0}
+body.light th{background:rgba(20,40,80,.08)}
+th.today-col{background:rgba(255,183,77,.30);color:var(--text);}
+td.today-col{background:rgba(255,183,77,.16)}
+td.now-row{outline:2px solid var(--amber);outline-offset:-2px;background:rgba(255,183,77,.22)}
+td.past-day{opacity:.35}
+.cell{display:inline-block;padding:1px 5px;border-radius:5px;color:#fff;line-height:1.5;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+body.light .cell{color:#fff}
+.cell.dim{background:rgba(120,140,170,.35)!important;color:var(--text-sub)!important}
+body.light .cell.dim{color:var(--text)!important}
+th.lbl{font-size:10px}
+
+/* 班级/科目图例 */
+.legend{display:flex;flex-wrap:wrap;gap:5px 8px;margin-top:8px}
+.legend-item{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-sub)}
+.legend-item .ldot{width:9px;height:9px;border-radius:3px;flex:0 0 9px}
+.legend-title{font-size:11px;color:var(--text-sub);width:100%;margin-bottom:2px;letter-spacing:1px}
+
+/* ---------- 提示条 ---------- */
+.toast{
+  position:fixed;left:50%;bottom:14px;transform:translateX(-50%) translateY(20px);
+  background:rgba(20,30,55,.9);color:#fff;font-size:12px;
+  padding:6px 14px;border-radius:999px;opacity:0;pointer-events:none;
+  transition:all .25s;z-index:99;white-space:nowrap;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="panel" id="panel">
+
+  <!-- ================= 顶部：时钟 + 日期 + 作息 + 切换/置顶/退出 ================= -->
+  <div class="titlebar">
+    <div class="tb-top">
+      <div>
+        <div class="clock" id="clock">--:--:--</div>
+        <div class="date" id="date">----</div>
+      </div>
+      <div class="tb-btns">
+        <button class="tb-btn" id="pinBtn" title="切换始终置顶">置顶</button>
+        <button class="tb-btn danger" id="quitBtn" title="退出浮窗">退出</button>
+      </div>
+    </div>
+    <div class="scheme-bar">
+      <span class="scheme-name" id="schemeName">夏季作息</span>
+      <button class="mini-btn" id="schemeSwitch" title="一键切换冬/夏作息">切至冬季</button>
+    </div>
+    <div class="theme-bar" id="themeBar"></div>
+  </div>
+
+  <!-- ================= 当前状态卡 ================= -->
+  <div class="card status-card">
+    <div class="row1">
+      <span class="status-tag" id="statusTag">休息备课</span>
+      <span class="countdown big" id="statusCount">--:--:--</span>
+    </div>
+    <div class="status-sub" id="statusSub">加载中…</div>
+  </div>
+
+  <!-- ================= 下一节课卡 ================= -->
+  <div class="card">
+    <div class="card-title">下一节课</div>
+    <div class="next-main" id="nextMain">--</div>
+    <div class="next-time" id="nextTime">--:-- - --:--</div>
+    <div class="next-count" id="nextCount">距开课 <i>--:--:--</i></div>
+  </div>
+
+  <!-- ================= 打卡提醒 ================= -->
+  <div class="card">
+    <div class="card-title">打卡提醒</div>
+    <div class="punch-grid" id="punchGrid"></div>
+  </div>
+
+  <!-- ================= 下班进度卡 ================= -->
+  <div class="card">
+    <div class="card-title">下班进度</div>
+    <div class="off-row"><span id="offTime">下班 --:--</span><span class="off-pct" id="offPct">0%</span></div>
+    <div class="bar"><div class="bar-fill" id="offBar"></div></div>
+    <div class="off-left" id="offLeft">--</div>
+  </div>
+
+  <!-- ================= 今日课程滚动列表 ================= -->
+  <div class="card">
+    <div class="card-title">今日课程</div>
+    <div class="today-scroll" id="todayList"></div>
+  </div>
+
+  <!-- ================= 本周课表概览 + 图例 ================= -->
+  <div class="card">
+    <div class="card-title">本周课表概览</div>
+    <div class="week-scroll"><table id="weekTable"></table></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+ * ★★★★★★★★ 配置区（只改这里即可，逻辑代码不用动） ★★★★★★★★
+ * ============================================================
+ * 本课表示例数据来自：2026学年第一学期 高一(9)班 课程表
+ * 时间均为 24 小时制 "HH:MM"
+ * ============================================================ */
+const CONFIG = {
+  /* ---------- 基本信息 ---------- */
+  title: '2026学年第一学期 高一(9)班 课表',
+  className: '高一(9)班',
+
+  /* ---------- 每周起始日 & 上课日 ----------
+   * weekStart: 1=周一 起排表
+   * workdays : 1~5 = 周一~周五 上课；周六日显示「周末休息」 */
+  weekStart: 1,
+  workdays: [1, 2, 3, 4, 5],
+
+  /* ---------- 夏季作息（示例数据，请按本校实际修改） ---------- */
+  summer: {
+    name: '夏季作息',
+    /* 正课节次时间（第1~9节） */
+    periods: [
+      { start: '08:00', end: '08:40' },
+      { start: '08:55', end: '09:35' },
+      { start: '10:05', end: '10:45' },
+      { start: '11:00', end: '11:40' },
+      { start: '12:45', end: '13:25' },
+      { start: '13:40', end: '14:20' },
+      { start: '14:35', end: '15:15' },
+      { start: '15:30', end: '16:10' },
+      { start: '16:30', end: '17:05' }
+    ],
+    /* 午间休息段（用于状态显示「午间休息」） */
+    noon: { start: '11:40', end: '12:45' },
+    /* 四个打卡点：time=时间, leadMin=提前N分钟进入高亮, keepMin=高亮持续N分钟 */
+    punches: [
+      { name: '早入校',   time: '07:40', leadMin: 10, keepMin: 20 },
+      { name: '上午放学', time: '11:40', leadMin: 5,  keepMin: 20 },
+      { name: '下午入校', time: '12:45', leadMin: 5,  keepMin: 15 },
+      { name: '下午放学', time: '17:05', leadMin: 5,  keepMin: 25 }
+    ],
+    /* 集体备课时间段（自动显示「集体备课中」） */
+    meeting: { start: '17:05', end: '17:40' },
+    /* 下班时间 */
+    offDuty: '17:40'
+  },
+
+  /* ---------- 冬季作息（示例数据，请按本校实际修改） ---------- */
+  winter: {
+    name: '冬季作息',
+    periods: [
+      { start: '08:20', end: '09:00' },
+      { start: '09:15', end: '09:55' },
+      { start: '10:25', end: '11:05' },
+      { start: '11:20', end: '12:00' },
+      { start: '13:05', end: '13:45' },
+      { start: '14:00', end: '14:40' },
+      { start: '14:55', end: '15:35' },
+      { start: '15:50', end: '16:30' },
+      { start: '16:50', end: '17:25' }
+    ],
+    noon: { start: '12:00', end: '13:05' },
+    punches: [
+      { name: '早入校',   time: '08:00', leadMin: 10, keepMin: 20 },
+      { name: '上午放学', time: '12:00', leadMin: 5,  keepMin: 20 },
+      { name: '下午入校', time: '13:05', leadMin: 5,  keepMin: 15 },
+      { name: '下午放学', time: '17:25', leadMin: 5,  keepMin: 25 }
+    ],
+    meeting: { start: '17:25', end: '17:55' },
+    offDuty: '17:55'
+  },
+
+  /* ---------- 周课表（周一~周五 × 9节正课） ----------
+   * 键：1=周一 … 5=周五；值：第1~9节科目
+   * 科目名请与下方 subjectColors 的键保持一致 */
+  schedule: {
+    1: ['数学必修', '英语必修', '信息技术', '信息技术', '语文必修',
+        '体育与健康', '物理必修', '生物拓展', '活动与辅导'],
+    2: ['听说与泛读', '思想政治必修', '数学必修', '艺术', '语文必修',
+        '化学必修', '历史拓展', '通用技术', '体育与健康'],
+    3: ['物理必修', '历史必修', '思想政治必修', '地理必修', '体育与健康',
+        '应用数学', '英语必修', '阅读与写作', '高一体育活动'],
+    4: ['化学拓展', '应用数学', '英语必修', '语文必修', '物理拓展',
+        '地理拓展', '生物必修', '心理/自修', '活动与辅导'],
+    5: ['阅读与写作', '体育与健康', '数学必修', '听说与泛读', '校班会',
+        '读本', '化学拓展', '校本课程', '校本课程']
+  },
+
+  /* ---------- 晚自习（每晚两节；subjects 按 周一~周五） ---------- */
+  evening: {
+    periods: [
+      { start: '19:00', end: '19:45' },
+      { start: '19:55', end: '20:40' }
+    ],
+    subjects: {
+      1: ['数学', '英语'],
+      2: ['语文', '数学'],
+      3: ['英语', '物理'],
+      4: ['化学', '数学'],
+      5: ['英语', '语文']
+    }
+  },
+
+  /* ---------- 科目配色（用于课表着色与图例） ---------- */
+  subjectColors: {
+    '数学必修': '#7c6bff', '英语必修': '#4fc3f7', '语文必修': '#ff9e5e',
+    '物理必修': '#29b6f6', '化学必修': '#66bb6a', '思想政治必修': '#ffb74d',
+    '历史必修': '#ff8a65', '地理必修': '#4db6ac', '生物必修': '#81c784',
+    '体育与健康': '#ff7043', '信息技术': '#b388ff', '艺术': '#f06292',
+    '通用技术': '#90a4ae', '阅读与写作': '#a1887f', '听说与泛读': '#9575cd',
+    '应用数学': '#7986cb', '校本课程': '#4dd0e1', '校班会': '#ffd54f',
+    '读本': '#8d6e63', '心理/自修': '#cfd8dc', '活动与辅导': '#ffe082',
+    '高一体育活动': '#a5d6a7', '生物拓展': '#81c784', '物理拓展': '#29b6f6',
+    '化学拓展': '#66bb6a', '地理拓展': '#4db6ac', '历史拓展': '#ff8a65',
+    '数学': '#7c6bff', '英语': '#4fc3f7', '语文': '#ff9e5e',
+    '物理': '#29b6f6', '化学': '#66bb6a'
+  },
+
+  /* ---------- 底色主题（顶部圆形色块，点击一键切换）
+   * light:true 表示浅色底 → 自动切深色文字 */
+  themes: [
+    { id: 'violet', name: '紫蓝', light: false, bg: 'linear-gradient(160deg,#2b1055 0%,#3a1c71 55%,#7597de 100%)' },
+    { id: 'deep',   name: '深空', light: false, bg: 'linear-gradient(160deg,#0f0c29 0%,#302b63 55%,#24243e 100%)' },
+    { id: 'sunset', name: '暮紫', light: false, bg: 'linear-gradient(160deg,#42275a 0%,#734b6d 100%)' },
+    { id: 'ocean',  name: '青蓝', light: false, bg: 'linear-gradient(160deg,#0f2027 0%,#203a43 60%,#2c5364 100%)' },
+    { id: 'light',  name: '浅色', light: true,  bg: 'linear-gradient(160deg,#f2f4fa 0%,#d7deee 100%)' }
+  ],
+
+  /* ---------- 自定义背景图 ----------
+   * 填写本地图片的绝对路径（如 E:\壁纸\bg.jpg），留空 "" 则使用上面的渐变背景 */
+  customBgPath: ''
+};
+/* ============================================================
+ * ★★★★★★★★★★★★★ 配置区结束 ★★★★★★★★★★★★★
+ * ============================================================ */
+
+/* ================= 工具函数 ================= */
+const $ = (id) => document.getElementById(id);
+const pad = (n) => String(n).padStart(2, '0');
+const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const fmtHM = (min) => `${pad(Math.floor(min / 60))}:${pad(min % 60)}`;
+/** 倒计时格式化：大于1小时显示 时:分:秒，否则 分:秒 */
+function fmtCount(sec) {
+  if (sec < 0) sec = 0;
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+  if (h > 0) return `${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${pad(m)}:${pad(s)}`;
+}
+const WEEK_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const WEEK_CN2 = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+
+/* ================= 全局状态 ================= */
+let schemeId = localStorage.getItem('tt_scheme') || 'summer'; // 夏季/冬季
+let themeId = localStorage.getItem('tt_theme') || 'violet';    // 底色主题
+let useBg = localStorage.getItem('tt_useBg') !== '0';          // 是否使用自定义背景图
+
+/* ================= 主题 / 背景 ================= */
+function getThemeById(id) {
+  return CONFIG.themes.find(t => t.id === id) || CONFIG.themes[0];
+}
+function applyTheme(id, silent) {
+  themeId = id;
+  localStorage.setItem('tt_theme', id);
+  const t = getThemeById(id);
+  document.body.classList.toggle('light', !!t.light);
+  /* 统一走 background 简写（含铺满方式），避免与 backgroundImage 子属性互相覆盖 */
+  $('panel').style.background = t.bg + ' center / cover no-repeat';
+  document.querySelectorAll('.theme-dot').forEach(d => {
+    d.classList.toggle('on', d.dataset.id === id);
+  });
+  if (!silent) toast(t.name + ' 主题已应用');
+}
+async function applyCustomBg() {
+  const p = $('panel');
+  const t = getThemeById(themeId);
+  if (CONFIG.customBgPath && useBg && window.desktop) {
+    const data = await window.desktop.readImageAsDataUrl(CONFIG.customBgPath);
+    if (data) {
+      p.style.background = 'url("' + data + '") center / cover no-repeat';
+      document.body.classList.toggle('light', !!t.light);
+      return;
+    }
+    toast('未找到背景图，已用渐变背景');
+  }
+  p.style.background = t.bg + ' center / cover no-repeat';
+}
+function buildThemeBar() {
+  const bar = $('themeBar');
+  bar.innerHTML = '';
+  CONFIG.themes.forEach(t => {
+    const d = document.createElement('div');
+    d.className = 'theme-dot' + (t.id === themeId ? ' on' : '');
+    d.dataset.id = t.id;
+    d.style.background = t.bg;
+    d.title = t.name;
+    d.onclick = () => { useBg = false; localStorage.setItem('tt_useBg', '0'); applyTheme(t.id); applyCustomBg(); };
+    bar.appendChild(d);
+  });
+  if (CONFIG.customBgPath) {
+    const b = document.createElement('button');
+    b.className = 'bg-toggle-btn';
+    b.textContent = useBg ? '背景图: 开' : '背景图: 关';
+    b.onclick = () => {
+      useBg = !useBg;
+      localStorage.setItem('tt_useBg', useBg ? '1' : '0');
+      b.textContent = useBg ? '背景图: 开' : '背景图: 关';
+      applyCustomBg();
+    };
+    bar.appendChild(b);
+  }
+}
+
+/* ================= 作息切换 ================= */
+function currentScheme() { return CONFIG[schemeId]; }
+function switchScheme() {
+  schemeId = schemeId === 'summer' ? 'winter' : 'summer';
+  localStorage.setItem('tt_scheme', schemeId);
+  toast('已切换为' + currentScheme().name);
+  renderAll();
+}
+function renderSchemeBar() {
+  $('schemeName').textContent = currentScheme().name;
+  $('schemeSwitch').textContent = schemeId === 'summer' ? '切至冬季' : '切至夏季';
+}
+
+/* ================= 核心时间状态计算 ================= */
+function todayLessons(scheme) {
+  /* 返回今日全部课程（9 节正课 + 晚自习），每项：
+     { no, name, subject, start, end, minS, minE, evening } */
+  const dow = new Date().getDay(); // 0=周日
+  const items = [];
+  const subs = CONFIG.schedule[dow] || [];
+  scheme.periods.forEach((p, i) => {
+    items.push({
+      no: '第' + (i + 1) + '节', name: subs[i] || '—',
+      subject: subs[i] || '', start: p.start, end: p.end,
+      minS: toMin(p.start), minE: toMin(p.end), evening: false
+    });
+  });
+  const evSubs = CONFIG.evening.subjects[dow] || [];
+  CONFIG.evening.periods.forEach((p, i) => {
+    items.push({
+      no: '晚' + (i + 1), name: evSubs[i] || '晚自习',
+      subject: evSubs[i] || '晚自习', start: p.start, end: p.end,
+      minS: toMin(p.start), minE: toMin(p.end), evening: true
+    });
+  });
+  return items;
+}
+
+/** 计算当前状态 */
+function calcState(scheme, nowMin) {
+  const dow = new Date().getDay();
+  const work = CONFIG.workdays.includes(dow);
+  const lessons = todayLessons(scheme);
+  const meeting = scheme.meeting;
+  const offDutyMin = toMin(scheme.offDuty);
+
+  if (!work) {
+    return { status: 'weekend', label: '周末休息', lessons, current: null, next: null, sub: '今天没有课程安排，好好休息' };
+  }
+
+  /* 1) 上课中 / 晚自习中 */
+  for (let i = 0; i < lessons.length; i++) {
+    const L = lessons[i];
+    if (nowMin >= L.minS && nowMin < L.minE) {
+      const remain = L.minE - nowMin;
+      const next = lessons[i + 1] || null;
+      return {
+        status: 'class', label: L.evening ? '晚自习中' : '上课中',
+        current: L, next,
+        sub: `当前：${L.no} ${L.name} ${L.start}-${L.end} · ${fmtHM(remain)}后下课`,
+        countdown: remain
+      };
+    }
+  }
+  /* 2) 集体备课中 */
+  if (nowMin >= toMin(meeting.start) && nowMin < toMin(meeting.end)) {
+    return {
+      status: 'meet', label: '集体备课中',
+      current: null, next: lessons.find(l => l.minS > nowMin) || null,
+      sub: `集体备课 ${meeting.start}-${meeting.end} · ${fmtHM(toMin(meeting.end) - nowMin)}后结束`,
+      countdown: toMin(meeting.end) - nowMin
+    };
+  }
+  /* 3) 已下班 */
+  if (nowMin >= offDutyMin) {
+    return {
+      status: 'done', label: '已下班',
+      current: null, next: null,
+      sub: '今天的教学工作已完成，祝您休息愉快', countdown: 0
+    };
+  }
+  /* 4) 其余工作时段 → 休息备课（细分子状态） */
+  const first = lessons[0], last = lessons[lessons.length - 1];
+  let subState = '课间休息';
+  if (nowMin < first.minS) subState = '课前准备';
+  else if (nowMin >= toMin(scheme.noon.start) && nowMin < toMin(scheme.noon.end)) subState = '午间休息';
+  else if (nowMin > last.minE) subState = '课后休息';
+  const next = lessons.find(l => l.minS > nowMin) || null;
+  return {
+    status: 'rest', label: '休息备课', subState,
+    current: null, next,
+    sub: next
+      ? `${subState} · 下一节：${next.no} ${next.name} ${next.start}-${next.end}`
+      : subState + ' · 今日课程已结束',
+    countdown: next ? next.minS - nowMin : 0
+  };
+}
+
+/* ================= 渲染：顶部时钟 / 状态卡 / 下一节 ================= */
+function renderClock() {
+  const now = new Date();
+  $('clock').innerHTML = `${pad(now.getHours())}:${pad(now.getMinutes())}<small>:${pad(now.getSeconds())}</small>`;
+  $('date').textContent = `${now.getMonth() + 1}月${now.getDate()}日 ${WEEK_CN2[now.getDay()]}`;
+}
+
+function renderStatus(state) {
+  const tag = $('statusTag');
+  tag.className = 'status-tag';
+  if (state.status === 'class') tag.classList.add('hot');
+  if (state.status === 'meet') tag.classList.add('meet');
+  tag.textContent = state.label;
+
+  const cd = $('statusCount');
+  if (state.status === 'class' || state.status === 'meet') {
+    cd.textContent = fmtCount(state.countdown * 60);
+  } else if (state.status === 'rest' && state.next) {
+    cd.textContent = fmtCount(state.countdown * 60);
+  } else {
+    cd.textContent = '--:--:--';
+  }
+  $('statusSub').textContent = state.sub;
+}
+
+function renderNext(state) {
+  const n = state.next;
+  const box = $('nextMain'), tm = $('nextTime'), ct = $('nextCount');
+  if (!n) {
+    box.textContent = '今日课程已结束';
+    tm.textContent = '— —';
+    ct.innerHTML = '明天继续加油';
+    return;
+  }
+  box.innerHTML = `${n.no} · <b>${n.name}</b>${n.evening ? '（晚自习）' : ''}`;
+  tm.textContent = `${n.start} - ${n.end}`;
+  const now = new Date();
+  const diffMin = toMin(n.start) - (now.getHours() * 60 + now.getMinutes());
+  ct.innerHTML = `距开课 <i>${fmtCount(Math.max(0, diffMin) * 60 - now.getSeconds())}</i>`;
+}
+
+/* ================= 渲染：打卡提醒 ================= */
+function renderPunches(scheme) {
+  const now = new Date();
+  const m = now.getHours() * 60 + now.getMinutes();
+  const g = $('punchGrid');
+  g.innerHTML = '';
+  scheme.punches.forEach(p => {
+    const t = toMin(p.time);
+    const active = m >= (t - p.leadMin) && m <= (t + p.keepMin);
+    const d = document.createElement('div');
+    d.className = 'punch-item' + (active ? ' on' : '');
+    let note;
+    if (active) note = '高亮时段 · 请打卡';
+    else if (m < t) note = '距打卡 ' + fmtHM(t - m);
+    else note = '已过';
+    d.innerHTML = `<div class="p-name">${p.name}</div>
+      <div class="p-time">${p.time}</div>
+      <div class="p-note">${note}</div>`;
+    g.appendChild(d);
+  });
+}
+
+/* ================= 渲染：下班进度 ================= */
+function renderOffDuty(scheme) {
+  const now = new Date();
+  const m = now.getHours() * 60 + now.getMinutes();
+  const start = toMin(scheme.punches[0].time); // 早入校 = 上班起点
+  const end = toMin(scheme.offDuty);
+  const total = Math.max(1, end - start);
+  const pct = Math.min(100, Math.max(0, ((m - start) / total) * 100));
+  $('offTime').textContent = `下班 ${scheme.offDuty}`;
+  $('offPct').textContent = Math.round(pct) + '%';
+  $('offBar').style.width = pct + '%';
+  if (m >= end) $('offLeft').innerHTML = '已下班 · 今天辛苦了';
+  else if (m < start) $('offLeft').innerHTML = `距上班起点还差 <b>${fmtHM(start - m)}</b>`;
+  else $('offLeft').innerHTML = `距下班剩余 <b>${fmtHM(end - m)}</b>`;
+}
+
+/* ================= 渲染：今日课程滚动列表 ================= */
+function renderTodayList(lessons) {
+  const now = new Date();
+  const m = now.getHours() * 60 + now.getMinutes();
+  const box = $('todayList');
+  box.innerHTML = '';
+  lessons.forEach(L => {
+    const isNow = m >= L.minS && m < L.minE;
+    const isPast = m >= L.minE;
+    const cls = isNow ? 'now' : (isPast ? 'past' : '');
+    const color = CONFIG.subjectColors[L.subject] || '#90a4ae';
+    const row = document.createElement('div');
+    row.className = 't-item ' + cls;
+    row.innerHTML = `<span class="t-no">${L.no}</span>
+      <span class="t-sub"><span class="dot" style="background:${color}"></span>
+      <span class="nm">${L.name}</span></span>
+      <span class="t-time">${L.start}-${L.end}</span>`;
+    box.appendChild(row);
+  });
+}
+
+/* ================= 渲染：本周课表概览 + 图例 ================= */
+function renderWeek() {
+  const now = new Date();
+  const todayDow = now.getDay(); // 0=周日
+  const table = $('weekTable');
+  const heads = ['节次', '周一', '周二', '周三', '周四', '周五'];
+  let html = '<tr>';
+  heads.forEach((h, i) => {
+    const isToday = i > 0 && (todayDow === i);
+    html += `<th class="${i > 0 && todayDow === i ? 'today-col' : ''} ${i === 0 ? 'lbl' : ''}">${h}${isToday ? '·今' : ''}</th>`;
+  });
+  html += '</tr>';
+
+  const scheme = currentScheme();
+  const lessons = todayLessons(scheme);
+  const m = now.getHours() * 60 + now.getMinutes();
+  const curIdx = lessons.findIndex(L => m >= L.minS && m < L.minE);
+
+  /* 9 节正课 + 晚自习 */
+  for (let i = 0; i < 9; i++) {
+    html += rowHtml(i + 1, '第' + (i + 1) + '节', i, scheme, m, todayDow, curIdx, now);
+  }
+  for (let i = 0; i < CONFIG.evening.periods.length; i++) {
+    html += rowHtml(9 + i, '晚' + (i + 1), 9 + i, scheme, m, todayDow, curIdx, now);
+  }
+  table.innerHTML = html;
+}
+
+function rowHtml(ri, no, si, scheme, m, todayDow, curIdx, now) {
+  const isToday = CONFIG.workdays.includes(todayDow);
+  const isCur = (isToday && si === curIdx);
+  let h = `<tr>`;
+  h += `<td class="${isToday && isCur ? 'now-row' : ''}">${no}</td>`;
+  for (let d = 1; d <= 5; d++) {
+    const colToday = (d === todayDow && CONFIG.workdays.includes(todayDow));
+    const cls = colToday ? 'today-col' : '';
+    let cell = '';
+    if (d === todayDow && CONFIG.workdays.includes(todayDow)) {
+      /* 今天：取今日课程 */
+      const L = todayLessons(scheme)[si];
+      if (L) cell = coloredCell(L.name, CONFIG.subjectColors[L.name]);
+    } else {
+      const subj = (CONFIG.schedule[d] || [])[si] || '—';
+      cell = coloredCell(subj, CONFIG.subjectColors[subj]);
+    }
+    const extra = (colToday && curIdx > -1 && si < curIdx) ? ' past-day' : '';
+    h += `<td class="${cls}${extra}${colToday && isCur ? ' now-row' : ''}">${cell}</td>`;
+  }
+  h += '</tr>';
+  return h;
+}
+
+function coloredCell(name, color) {
+  if (name === '—') return name;
+  const c = color || '#90a4ae';
+  return `<span class="cell" style="background:${c}">${name}</span>`;
+}
+
+function renderLegend() {
+  const box = $('legend');
+  box.innerHTML = '<div class="legend-title">' + CONFIG.title + ' · 科目图例</div>';
+  const used = new Set();
+  Object.values(CONFIG.schedule).forEach(arr => arr.forEach(s => used.add(s)));
+  Object.values(CONFIG.evening.subjects).forEach(arr => arr.forEach(s => used.add(s)));
+  used.forEach(s => {
+    const c = CONFIG.subjectColors[s] || '#90a4ae';
+    const item = document.createElement('span');
+    item.className = 'legend-item';
+    item.innerHTML = `<span class="ldot" style="background:${c}"></span>${s}`;
+    box.appendChild(item);
+  });
+}
+
+/* ================= 渲染总入口 ================= */
+function renderAll() {
+  const scheme = currentScheme();
+  renderClock();
+  renderSchemeBar();
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const state = calcState(scheme, nowMin);
+  renderStatus(state);
+  renderNext(state);
+  renderPunches(scheme);
+  renderOffDuty(scheme);
+  renderTodayList(todayLessons(scheme));
+  renderWeek();
+}
+
+/* ================= 轻提示 ================= */
+let toastTimer = null;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+/* ================= 事件绑定 ================= */
+$('schemeSwitch').onclick = switchScheme;
+$('pinBtn').onclick = () => {
+  if (window.desktop) {
+    window.desktop.togglePin();
+    $('pinBtn').classList.toggle('on');
+    toast($('pinBtn').classList.contains('on') ? '已置顶' : '取消置顶');
+  }
+};
+$('quitBtn').onclick = () => { if (window.desktop) window.desktop.quit(); };
+
+/* ================= 启动 ================= */
+buildThemeBar();
+applyTheme(themeId, true);   /* 应用记住的主题 */
+applyCustomBg();             /* 尝试加载自定义背景图 */
+renderAll();
+setInterval(renderAll, 1000); /* 每秒刷新（时钟 + 倒计时） */
+</script>
+</body>
+</html>
